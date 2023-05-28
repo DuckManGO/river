@@ -24,7 +24,7 @@ class ATTENTION(DriftDetector):
         self.value.append(x)
         if len(self.value) > self.value_size:
             self.value.pop(0)
-
+        """
         attention_score = numpy.matmul(self.value, numpy.transpose(self.value, (1, 2)))
 
         attention_prob = scipy.special.softmax(attention_score)
@@ -32,5 +32,5 @@ class ATTENTION(DriftDetector):
         attention_values = numpy.matmul(attention_prob, self.value)
 
         print(attention_values)
-
+        """
         return self
