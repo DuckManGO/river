@@ -38,7 +38,7 @@ class ATTENTION(DriftDetector):
         super()._reset()
 
     def update(self, x):
-
+        print('attention updating')
         if self.drift_detected:
             self._reset()
 
