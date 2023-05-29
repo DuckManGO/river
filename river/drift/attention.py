@@ -41,7 +41,7 @@ class ATTENTION(DriftDetector):
         print('attention updating')
         if self.drift_detected:
             self._reset()
-
+        raise()
         self.value.append([x])
         self.value.pop(0)
  
