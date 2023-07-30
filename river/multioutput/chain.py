@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import collections
 import copy
+import functools
 import random
 
 from river import base, linear_model
-from river.utils.math import prod
+from river.utils.math import minkowski_distance, prod
 
 __all__ = [
     "ClassifierChain",
@@ -83,7 +84,7 @@ class ClassifierChain(BaseChain, base.MultiLabelClassifier):
     ...     model = model.learn_one(x, y)
 
     >>> metric
-    MicroAverage(Jaccard): 41.95%
+    MicroAverage(Jaccard): 41.81%
 
     References
     ----------
@@ -101,7 +102,12 @@ class ClassifierChain(BaseChain, base.MultiLabelClassifier):
         yield {"model": linear_model.LogisticRegression()}  # binary classifier
         yield {"model": linear_model.SoftmaxRegression()}  # multi-class classifier
         yield {
-            "model": neighbors.KNNClassifier(n_neighbors=1, window_size=5)
+            "model": neighbors.KNNClassifier(
+                n_neighbors=1,
+                engine=neighbors.LazySearch(
+                    window_size=10, dist_func=functools.partial(minkowski_distance, p=2)
+                ),
+            )
         }  # multi-class classifier
 
     @property
@@ -206,7 +212,7 @@ class RegressorChain(BaseChain, base.MultiTargetRegressor):
     >>> metric = metrics.multioutput.MicroAverage(metrics.MAE())
 
     >>> evaluate.progressive_val_score(dataset, model, metric)
-    MicroAverage(MAE): 12.649592
+    MicroAverage(MAE): 12.733525
 
     """
 

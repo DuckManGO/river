@@ -4,6 +4,7 @@ the __doc__ of each object and formats it so that MkDocs can process it in turn.
 
 """
 import argparse
+import collections
 import doctest
 import functools
 import importlib
@@ -61,7 +62,7 @@ def snake_to_kebab(text: str) -> str:
     return text.replace("_", "-")
 
 
-def find_method_docstring(klass, method: str) -> str | None:
+def find_method_docstring(klass, method: str) -> str:
     """Look through a class' ancestors for the first non-empty method docstring.
 
     Since Python 3.5, inspect.getdoc is supposed to do exactly this. However, it doesn't seem to
@@ -94,7 +95,7 @@ def find_method_docstring(klass, method: str) -> str | None:
             return doc
 
 
-def find_method_signature(klass, method: str) -> inspect.Signature | None:
+def find_method_signature(klass, method: str) -> inspect.Signature:
     """Look through a class' ancestors and fill out the methods signature.
 
     A class method has a signature. But it might now always be complete. When a parameter is not
@@ -371,7 +372,7 @@ def print_docstring(obj, file):
             ):
                 continue
 
-            ensemble_method_names = {
+            container_method_names = {
                 "append",
                 "clear",
                 "copy",
@@ -380,15 +381,23 @@ def print_docstring(obj, file):
                 "index",
                 "insert",
                 "pop",
+                "popitem",
+                "keys",
+                "fromkeys",
+                "get",
                 "remove",
                 "reverse",
                 "sort",
+                "setdefault",
+                "values",
+                "update",
+                "items",
             }
 
             if (
-                issubclass(obj, river.base.Ensemble)
+                issubclass(obj, (collections.UserList, collections.UserDict))
                 and not obj is river.base.Ensemble
-                and meth.name in ensemble_method_names
+                and meth.name in container_method_names
             ):
                 continue
 
@@ -483,40 +492,22 @@ def print_module(mod, path, overview, depth=0, verbose=False):
     classes = inspect.getmembers(mod, lambda x: inspect.isclass(x) and ispublic(x))
     funcs = inspect.getmembers(mod, lambda x: inspect.isfunction(x) and ispublic(x))
 
-    # Classes
-
+    # Overview
     if hasattr(mod, "_docs_overview"):
         mod._docs_overview(functools.partial(print, file=overview))
     else:
         if classes and funcs:
             print("\n**Classes**\n", file=overview)
-
         for _, c in classes:
-            if verbose:
-                print(f"{mod_name}.{c.__name__}")
-
-            # Add the class to the overview
             slug = snake_to_kebab(c.__name__)
             print(
                 li(link(c.__name__, f"../{mod_short_path}/{slug}")),
                 end="",
                 file=overview,
             )
-
-            # Write down the class' docstring
-            with open(mod_path.joinpath(slug).with_suffix(".md"), "w") as file:
-                print_docstring(obj=c, file=file)
-
-        # Functions
-
         if classes and funcs:
             print("\n**Functions**\n", file=overview)
-
         for _, f in funcs:
-            if verbose:
-                print(f"{mod_name}.{f.__name__}")
-
-            # Add the function to the overview
             slug = snake_to_kebab(f.__name__)
             print(
                 li(link(f.__name__, f"../{mod_short_path}/{slug}")),
@@ -524,9 +515,20 @@ def print_module(mod, path, overview, depth=0, verbose=False):
                 file=overview,
             )
 
-            # Write down the function' docstring
-            with open(mod_path.joinpath(slug).with_suffix(".md"), "w") as file:
-                print_docstring(obj=f, file=file)
+    # Docstrings
+    for _, c in classes:
+        if verbose:
+            print(f"{mod_name}.{c.__name__}")
+        slug = snake_to_kebab(c.__name__)
+        with open(mod_path.joinpath(slug).with_suffix(".md"), "w") as file:
+            print_docstring(obj=c, file=file)
+
+    for _, f in funcs:
+        if verbose:
+            print(f"{mod_name}.{f.__name__}")
+        slug = snake_to_kebab(f.__name__)
+        with open(mod_path.joinpath(slug).with_suffix(".md"), "w") as file:
+            print_docstring(obj=f, file=file)
 
     # Sub-modules
     for name, submod in inspect.getmembers(mod, inspect.ismodule):

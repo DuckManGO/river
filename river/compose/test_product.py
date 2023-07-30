@@ -49,19 +49,75 @@ def test_issue_1243():
     >>> model = model.learn_many(X)
     >>> for x in X.to_dict('records'):
     ...     print(model.transform_one(x))
-    {'z*x': 0.697074..., 'x': 0.697074..., 'z': 1}
-    {'z*x': -1.351716..., 'x': -1.351716..., 'z': 1}
-    {'z*x': -0.430886..., 'x': -0.430886..., 'z': 1}
-    {'z*x': -0.580868..., 'x': -0.580868..., 'z': 1}
-    {'z*x': 1.228463..., 'x': 1.228463..., 'z': 1}
-    {'z*x': 0.924721..., 'x': 0.924721..., 'z': 1}
+    {'z*x': 0.785..., 'x': 0.785..., 'z': 1}
+    {'z*x': -1.511..., 'x': -1.511..., 'z': 1}
+    {'z*x': -0.576..., 'x': -0.576..., 'z': 1}
+    {'z*x': -0.770..., 'x': -0.770..., 'z': 1}
+    {'z*x': 1.148..., 'x': 1.148..., 'z': 1}
+    {'z*x': 0.924..., 'x': 0.924..., 'z': 1}
+
+    """
+
+
+def test_issue_1253():
+    """
+
+    https://github.com/online-ml/river/issues/1253
+
+    >>> import numpy as np
+    >>> import pandas as pd
+    >>> from river import compat, compose, preprocessing
+    >>> from sklearn import datasets, linear_model
+
+    >>> np.random.seed(1000)
+    >>> X, y = datasets.make_regression(n_samples=5_000, n_features=2)
+    >>> X = pd.DataFrame(X, columns=['feat_1','feat_2'])
+    >>> X['cat'] = np.random.randint(1, 100, len(X))
+    >>> X['cat'] = X['cat'].astype('string')
+
+    >>> group1 = compose.Select('cat') | preprocessing.OneHotEncoder()
+    >>> group2 = compose.Select('feat_2') | preprocessing.StandardScaler()
+    >>> model = group1 + group1 * group2
+    >>> XT = model.transform_many(X)
+
+    >>> XT.memory_usage().sum() // 1000
+    85
+
+    >>> XT.sparse.to_dense().memory_usage().sum() // 1000
+    4455
+
+    >>> X, y = datasets.make_regression(n_samples=6, n_features=2)
+    >>> X = pd.DataFrame(X)
+    >>> X.columns = ['feat_1','feat_2']
+    >>> X['cat'] = np.random.randint(1, 3, X.shape[0])
+    >>> y = pd.Series(y)
+    >>> group1 = compose.Select('cat') | preprocessing.OneHotEncoder()
+    >>> group2 = compose.Select('feat_2') | preprocessing.StandardScaler()
+    >>> sparsify = lambda X: X.astype({
+    ...     key: pd.SparseDtype(X.dtypes[key].type, fill_value=0)
+    ...     for key in X.dtypes.keys()
+    ... })
+    >>> model = (
+    ...     (group1 + group1 * group2) |
+    ...     compose.FuncTransformer(sparsify) |
+    ...     compat.convert_sklearn_to_river(linear_model.SGDRegressor(max_iter=3))
+    ... )
+    >>> _ = model.predict_many(X)
+    >>> model.transform_many(X)
+       cat_1*feat_2  cat_2*feat_2  cat_1  cat_2
+    0     -1.196841      0.000000      1      0
+    1      1.304619      0.000000      1      0
+    2     -1.294091      0.000000      1      0
+    3      0.287426      0.000000      1      0
+    4     -0.143960      0.000000      1      0
+    5      0.000000      1.042847      0      1
 
     """
 
 
 def test_left_is_pipeline():
     group_1 = compose.Select("a", "b")
-    group_2 = compose.Select("x", "y") | preprocessing.OneHotEncoder(sparse=True)
+    group_2 = compose.Select("x", "y") | preprocessing.OneHotEncoder()
 
     product = group_1 + group_2 + group_1 * group_2
     assert product.transform_one(dict(a=1, b=2, x=4, y=4, z=5)) == {
@@ -77,7 +133,7 @@ def test_left_is_pipeline():
 
 
 def test_right_is_pipeline():
-    group_1 = compose.Select("a", "b") | preprocessing.OneHotEncoder(sparse=True)
+    group_1 = compose.Select("a", "b") | preprocessing.OneHotEncoder()
     group_2 = compose.Select("x", "y")
 
     product = group_1 + group_2 + group_1 * group_2
@@ -94,8 +150,8 @@ def test_right_is_pipeline():
 
 
 def test_both_are_pipelines():
-    group_1 = compose.Select("a", "b") | preprocessing.OneHotEncoder(sparse=True)
-    group_2 = compose.Select("x", "y") | preprocessing.OneHotEncoder(sparse=True)
+    group_1 = compose.Select("a", "b") | preprocessing.OneHotEncoder()
+    group_2 = compose.Select("x", "y") | preprocessing.OneHotEncoder()
 
     product = group_1 + group_2 + group_1 * group_2
     assert product.transform_one(dict(a=1, b=2, x=4, y=4, z=5)) == {

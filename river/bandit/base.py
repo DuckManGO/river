@@ -32,6 +32,8 @@ class Policy(base.Base, abc.ABC):
 
     """
 
+    _REQUIRES_UNIVARIATE_REWARD = False
+
     def __init__(
         self,
         reward_obj: RewardObj | None = None,
@@ -50,9 +52,12 @@ class Policy(base.Base, abc.ABC):
     def __post_init__(self):
         # It's only possible to use a reward scaler if the reward object is updated with univariate
         # reward values, because it manipulates the reward values directly.
-        if self.reward_scaler and not (
-            isinstance(self.reward_obj, proba.base.Distribution)
-            or isinstance(self.reward_obj, stats.base.Univariate)
+        if self._REQUIRES_UNIVARIATE_REWARD or (
+            self.reward_scaler
+            and not (
+                isinstance(self.reward_obj, proba.base.Distribution)
+                or isinstance(self.reward_obj, stats.base.Univariate)
+            )
         ):
             raise ValueError(
                 "The reward object should be a distribution or a univariate statistic if a "
@@ -67,9 +72,10 @@ class Policy(base.Base, abc.ABC):
         """Pull arm(s).
 
         This method is a generator that yields the arm(s) that should be pulled. During the burn-in
-        phase, all the arms that have not been pulled enough are yielded. Once the burn-in phase is
-        over, the policy is allowed to choose the arm(s) that should be pulled. If you only want to
-        pull one arm at a time during the burn-in phase, simply call `next(policy.pull(arms))`.
+        phase, all the arms that have not been pulled enough times are yielded. Once the burn-in
+        phase is over, the policy is allowed to choose the arm(s) that should be pulled. If you
+        only want to pull one arm at a time during the burn-in phase, simply call
+        `next(policy.pull(arms))`.
 
         Parameters
         ----------
@@ -93,8 +99,6 @@ class Policy(base.Base, abc.ABC):
         ----------
         arm_id
             The arm to update.
-        reward_args
-            Positional arguments to pass to the reward object.
         reward_kwargs
             Keyword arguments to pass to the reward object.
 
