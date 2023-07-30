@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from river.base import DriftDetector
 
-from .take1_c import AdaptiveWindowing
+from .take1_c import AdaptiveWindowing_Take1
 
 
 class TAKE1(DriftDetector):
@@ -73,7 +73,7 @@ class TAKE1(DriftDetector):
 
     def _reset(self):
         super()._reset()
-        self._helper = AdaptiveWindowing(
+        self._helper = AdaptiveWindowing_Take1(
             delta=self.delta,
             clock=self.clock,
             max_buckets=self.max_buckets,

@@ -10,7 +10,7 @@ from collections import deque
 from typing import Deque
 
 
-cdef class AdaptiveWindowing:
+cdef class AdaptiveWindowing_Take1:
     """ The helper class for ADWIN
 
     Parameters
