@@ -1,6 +1,6 @@
-"""Drift detection for binary data."""
+"""Test Drift Detectors for Honors"""
 from __future__ import annotations
 
-from .take1 import ADWIN
+from .take1 import TAKE1
 
-__all__ = ["ADWIN"]
+__all__ = ["TAKE1"]
