@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from river.base import DriftDetector
 
-from .test1_c import AdaptiveWindowing
+from atwin_c import AdaptiveWindowing
 
 
-class TESTWIN1(DriftDetector):
+class ATWIN(DriftDetector):
     r"""Adaptive Windowing method for concept drift detection.
 
     ADWIN (ADaptive WINdowing) is a popular drift detection method with mathematical guarantees.

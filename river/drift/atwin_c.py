@@ -1,16 +1,16 @@
 # cython: boundscheck=False
 
-from libc.math cimport fabs, log, pow, sqrt
+from math import fabs, log, pow, sqrt
 
 import numpy as np
 
-cimport numpy as np
+import numpy as np
 
 from collections import deque
 from typing import Deque
 
 
-cdef class AdaptiveWindowing:
+class AdaptiveWindowing:
     """ The helper class for ADWIN
 
     Parameters
@@ -31,11 +31,14 @@ cdef class AdaptiveWindowing:
         arrived (default is 10).
 
     """
-    cdef:
+
+    """
+    def:
         dict __dict__
         double delta, total, variance, total_width, width
         int n_buckets, grace_period, min_window_length, tick, n_detections,\
             clock, max_n_buckets, detect, detect_twice, max_buckets
+    """
 
     def __init__(self, delta=.002, clock=32, max_buckets=5, min_window_length=5, grace_period=10):
         self.delta = delta
@@ -90,14 +93,14 @@ cdef class AdaptiveWindowing:
         """
         return self._update(value)
 
-    cdef bint _update(self, double value):
+    def _update(self, value):
         # Increment window with one element
         self._insert_element(value, 0.0)
 
         return self._detect_change()
 
-    cdef void _insert_element(self, double value, double variance):
-        cdef Bucket bucket = self.bucket_deque[0]
+    def _insert_element(self, value, variance):
+        bucket = self.bucket_deque[0]
         bucket.insert_data(value, variance)
         self.n_buckets += 1
 
@@ -106,7 +109,7 @@ cdef class AdaptiveWindowing:
 
         # Update width, variance and total
         self.width += 1
-        cdef double incremental_variance = 0.0
+        incremental_variance = 0.0
         if self.width > 1.0:
             incremental_variance = (
                     (self.width - 1.0)
@@ -123,18 +126,18 @@ cdef class AdaptiveWindowing:
     def _calculate_bucket_size(row: int):
         return pow(2, row)
 
-    cdef double _delete_element(self):
-        cdef Bucket bucket = self.bucket_deque[-1]
-        cdef double n = self._calculate_bucket_size(len(self.bucket_deque) - 1) # length of bucket
-        cdef double u = bucket.get_total_at(0)     # total of bucket
-        cdef double mu = u / n                   # mean of bucket
-        cdef double v = bucket.get_variance_at(0)  # variance of bucket
+    def _delete_element(self):
+        bucket = self.bucket_deque[-1]
+        n = self._calculate_bucket_size(len(self.bucket_deque) - 1) # length of bucket
+        u = bucket.get_total_at(0)     # total of bucket
+        mu = u / n                   # mean of bucket
+        v = bucket.get_variance_at(0)  # variance of bucket
 
         # Update width, total and variance
         self.width -= n
         self.total -= u
         mu_window = self.total / self.width     # mean of the window
-        cdef double incremental_variance = (
+        incremental_variance = (
                 v + n * self.width * (mu - mu_window) * (mu - mu_window)
                 / (n + self.width)
         )
@@ -148,12 +151,14 @@ cdef class AdaptiveWindowing:
 
         return n
 
-    cdef void _compress_buckets(self):
+    def _compress_buckets(self):
 
-        cdef:
+        """
+        def:
             unsigned int idx, k
             double n1, n2, mu1, mu2, temp, total12
             Bucket bucket, next_bucket
+        """
 
         bucket = self.bucket_deque[0]
         idx = 0
@@ -190,7 +195,7 @@ cdef class AdaptiveWindowing:
                 bucket = None
             idx += 1
 
-    cdef bint _detect_change(self):
+    def _detect_change(self):
         """Detect concept change.
 
         This function is responsible for analysing different cutting points in
@@ -212,11 +217,14 @@ cdef class AdaptiveWindowing:
         https://doi.org/10.1145/773153.773176
 
         """
+
+        """
         cdef:
             unsigned int idx, k
             bint change_detected, exit_flag
             double n0, n1, n2, u0, u1, u2, v0, v1
             Bucket bucket
+        """
 
         change_detected = False
         exit_flag = False
@@ -297,10 +305,14 @@ cdef class AdaptiveWindowing:
 
         return change_detected
 
-    cdef bint _evaluate_cut(self, double n0, double n1,
-                            double delta_mean, double delta):
+    def _evaluate_cut(self, n0, n1,
+                            delta_mean, delta):
+        
+        """
         cdef:
             double delta_prime, m_recip, epsilon
+        """
+
         delta_prime = log(2 * log(self.width) / delta)
         # Use reciprocal of m to avoid extra divisions when calculating epsilon
         m_recip = ((1.0 / (n0 - self.min_window_length + 1))
@@ -310,7 +322,7 @@ cdef class AdaptiveWindowing:
         return fabs(delta_mean) > epsilon
 
 
-cdef class Bucket:
+class Bucket:
     """ A bucket class to keep statistics.
 
     A bucket stores the summary structure for a contiguous set of data elements.
@@ -318,9 +330,11 @@ cdef class Bucket:
     of the "current" element is used to simulate the dynamic size of the bucket.
 
     """
+    """
     cdef:
         int current_idx, max_size
         np.ndarray total_array, variance_array
+    """
 
     def __init__(self, max_size):
         self.max_size = max_size
@@ -329,21 +343,20 @@ cdef class Bucket:
         self.total_array = np.zeros(self.max_size + 1, dtype=float)
         self.variance_array = np.zeros(self.max_size + 1, dtype=float)
 
-    cdef void clear_at(self, int index):
+    def clear_at(self, index):
         self.set_total_at(0.0, index)
         self.set_variance_at(0.0, index)
 
-    cdef void insert_data(self, double value, double variance):
+    def insert_data(self, value, variance):
         self.set_total_at(value, self.current_idx)
         self.set_variance_at(variance, self.current_idx)
         self.current_idx += 1
 
-    cdef void remove(self):
+    def remove(self):
         self.compress(1)
 
-    cdef void compress(self, int n_elements):
-        cdef unsigned int i
-        cdef int window_len = len(self.total_array)
+    def compress(self, n_elements):
+        window_len = len(self.total_array)
         # Remove first n_elements by shifting elements to the left
         for i in range(n_elements, window_len):
             self.total_array[i - n_elements] = self.total_array[i]
@@ -354,14 +367,14 @@ cdef class Bucket:
 
         self.current_idx -= n_elements
 
-    cdef double get_total_at(self, int index):
+    def get_total_at(self, index):
         return self.total_array[index]
 
-    cdef double get_variance_at(self, int index):
+    def get_variance_at(self, index):
         return self.variance_array[index]
 
-    cdef void set_total_at(self, double value, int index):
+    def set_total_at(self, value, index):
         self.total_array[index] = value
 
-    cdef void set_variance_at(self, double value, int index):
+    def set_variance_at(self, value, index):
         self.variance_array[index] = value

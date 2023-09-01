@@ -19,7 +19,8 @@ from .retrain import DriftRetrainingClassifier
 __all__ = [
     "binary", 
     "test", 
-    "ADWIN",
+    "ADWIN", 
+    "ATWIN", 
     "DriftRetrainingClassifier",
     "DummyDriftDetector",
     "KSWIN",
