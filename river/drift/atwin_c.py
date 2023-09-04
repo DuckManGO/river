@@ -1,14 +1,16 @@
-# cython: boundscheck=False
-
 from math import fabs, log, pow, sqrt
-
-import numpy as np
 
 import numpy as np
 
 from collections import deque
 from typing import Deque
 
+# new imprts
+import torch
+import torch.nn as nn
+from torch.nn import functional as F
+
+from datashapes import testpile
 
 class AdaptiveWindowing:
     """ The helper class for ADWIN
@@ -32,14 +34,6 @@ class AdaptiveWindowing:
 
     """
 
-    """
-    def:
-        dict __dict__
-        double delta, total, variance, total_width, width
-        int n_buckets, grace_period, min_window_length, tick, n_detections,\
-            clock, max_n_buckets, detect, detect_twice, max_buckets
-    """
-
     def __init__(self, delta=.002, clock=32, max_buckets=5, min_window_length=5, grace_period=10):
         self.delta = delta
         self.bucket_deque: Deque['Bucket'] = deque([Bucket(max_size=max_buckets)])
@@ -55,6 +49,18 @@ class AdaptiveWindowing:
         self.max_n_buckets = 0
         self.min_window_length = min_window_length
         self.max_buckets = max_buckets
+
+        # new inclusion
+        self.C = 128 # Dimensions of keys and queries
+        #self.head_size = 1000# length
+        self.d = 10 # number of attention heads
+        k = 1
+        #self.token_embed = nn.LSTM(k, self.C, 2, bias=True)
+
+        # Learned linear transformations
+        self.query = nn.Linear(k, self.C, bias=False)
+        self.key = [nn.Linear(k, self.C, bias=False) for i in range(self.d)]
+        
 
     def get_n_detections(self):
         return self.n_detections
@@ -123,8 +129,8 @@ class AdaptiveWindowing:
         self._compress_buckets()
 
     @staticmethod
-    def _calculate_bucket_size(row: int):
-        return pow(2, row)
+    def _calculate_bucket_size(row):
+        return 2**row #pow(2, row)
 
     def _delete_element(self):
         bucket = self.bucket_deque[-1]
@@ -152,13 +158,6 @@ class AdaptiveWindowing:
         return n
 
     def _compress_buckets(self):
-
-        """
-        def:
-            unsigned int idx, k
-            double n1, n2, mu1, mu2, temp, total12
-            Bucket bucket, next_bucket
-        """
 
         bucket = self.bucket_deque[0]
         idx = 0
@@ -218,28 +217,46 @@ class AdaptiveWindowing:
 
         """
 
-        """
-        cdef:
-            unsigned int idx, k
-            bint change_detected, exit_flag
-            double n0, n1, n2, u0, u1, u2, v0, v1
-            Bucket bucket
-        """
-
         change_detected = False
         exit_flag = False
         self.tick += 1
 
         # Reduce window
         if (self.tick % self.clock == 0) and (self.width > self.grace_period):
+
             reduce_width = True
             while reduce_width:
+
+                # new inclusion of attention
+                raw = []
+                raw_resized = []
+                raw_width = []
+                for i in range(len(self.bucket_deque)):
+                    bucket = self.bucket_deque[i]
+                    size = self._calculate_bucket_size(i)
+                    for j in range(bucket.current_idx):
+                        raw.append(bucket.get_total_at(j))
+                        raw_resized.append([bucket.get_total_at(j) / size])
+                        raw_width.append(size)
+
+                # Uses the d attention heads, sorting them into in and out contexts.
+                inweights, outweights = self._context(raw_resized)
+                #print(raw)
+                weighted_values = [outweights[i] * raw[i] for i in range(len(raw))]
+                weighted_total = sum(weighted_values)
+                total_weight = sum([outweights[i] * raw_width[i] for i in range(len(raw))])
+                raw_count = 0
+
                 reduce_width = False
                 exit_flag = False
                 n0 = 0.0            # length of window 0
                 n1 = self.width     # length of window 1
+                w0 = 0.0           # weights of window 0
+                w1 = total_weight  # weights of window 1
                 u0 = 0.0            # total of window 0
                 u1 = self.total     # total of window 1
+                wu0 = 0.0           # weighted total of window 0
+                wu1 = weighted_total# weighted total of window 1
                 v0 = 0              # variance of window 0
                 v1 = self.variance  # variance of window 1
 
@@ -274,8 +291,15 @@ class AdaptiveWindowing:
                         # Update window 0 and 1
                         n0 += self._calculate_bucket_size(idx)
                         n1 -= self._calculate_bucket_size(idx)
+                        w0 += inweights[raw_count] * self._calculate_bucket_size(idx)
+                        w1 -= outweights[raw_count] * self._calculate_bucket_size(idx)
+
                         u0 += bucket.get_total_at(k)
                         u1 -= bucket.get_total_at(k)
+                        wu0 += bucket.get_total_at(k) * inweights[raw_count]
+                        wu1 -= bucket.get_total_at(k) * outweights[raw_count]
+
+                        raw_count += 1
 
                         if (idx == 0) and (k == bucket.current_idx - 1):
                             exit_flag = True    # We are done
@@ -283,20 +307,23 @@ class AdaptiveWindowing:
 
                         # Check if delta_mean < epsilon_cut holds
                         # Note: Must re-calculate means per updated values
-                        delta_mean = (u0 / n0) - (u1 / n1)
+                        #delta_mean = (u0 / n0) - (u1 / n1)
+                        delta_mean = (wu0 / (w0)) - (wu1 / (w1))
+                        #print((u0 / n0) - (u1 / n1), (wu0 / (w0)) - (wu1 / (w1)))
                         if (
                                 n1 >= self.min_window_length
                                 and n0 >= self.min_window_length
                                 and self._evaluate_cut(n0, n1, delta_mean, self.delta)
                         ):
                             # Change detected
-
+                            
                             reduce_width = True
                             change_detected = True
                             if self.width > 0:
                                 # Reduce the width of the window
                                 n0 -= self._delete_element()
                                 exit_flag = True    # We are done
+                                #testpile.plot_data([[raw_resized], [inweights], [outweights]])
                                 break
 
         self.total_width += self.width
@@ -305,13 +332,7 @@ class AdaptiveWindowing:
 
         return change_detected
 
-    def _evaluate_cut(self, n0, n1,
-                            delta_mean, delta):
-        
-        """
-        cdef:
-            double delta_prime, m_recip, epsilon
-        """
+    def _evaluate_cut(self, n0, n1, delta_mean, delta):
 
         delta_prime = log(2 * log(self.width) / delta)
         # Use reciprocal of m to avoid extra divisions when calculating epsilon
@@ -321,6 +342,39 @@ class AdaptiveWindowing:
                    + 2 / 3 * delta_prime * m_recip)
         return fabs(delta_mean) > epsilon
 
+    # new function
+    def _attent(self, d, raw):
+        # all bucket totals
+        q = self.query(torch.tensor([raw[-1]], dtype=torch.float64).float())
+        k = self.key[d](torch.tensor(raw, dtype=torch.float64).float())
+
+        W = F.softmax((q @ k.transpose(-2, -1)) / int(self.C^-2), dim=-1).transpose(-2, -1)
+
+        return W.detach().numpy()
+    
+    def _context(self, raw):
+        inweights = np.array([])
+        outweights = np.array([])
+        threshold = 1 / len(raw)
+        for i in range(self.d):
+            new = self._attent(i, raw)
+            # in context
+            if new[-1] >= threshold:
+                if inweights.any():
+                    inweights = np.add(inweights, new)
+                else:
+                    inweights = new
+            # out context
+            else:
+                if outweights.any():
+                    outweights = np.add(outweights, new)
+                else:
+                    outweights = new
+        if not inweights.any():
+            inweights = np.array([1 for i in range(len(raw))])
+        if not outweights.any():
+            outweights = np.array([1 for i in range(len(raw))])
+        return inweights, outweights
 
 class Bucket:
     """ A bucket class to keep statistics.

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 from . import binary, datasets
 from .adwin import ADWIN
+from .atwin import ATWIN
 from .dummy import DummyDriftDetector
 from .kswin import KSWIN
 from .page_hinkley import PageHinkley
