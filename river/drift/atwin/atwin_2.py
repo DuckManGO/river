@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from river.base import DriftDetector
 
-from .atwin_c import AdaptiveWindowing
+from .atwin_nc_2 import AdaptiveWindowing
 
 
-class ATWIN(DriftDetector):
+class ATWIN2(DriftDetector):
     r"""Adaptive Windowing method for concept drift detection.
 
     ADWIN (ADaptive WINdowing) is a popular drift detection method with mathematical guarantees.
@@ -62,13 +62,24 @@ class ATWIN(DriftDetector):
 
     """
 
-    def __init__(self, delta=0.002, clock=32, max_buckets=5, min_window_length=5, grace_period=10):
+    def __init__(self, 
+                delta=0.002, 
+                clock=32, 
+                max_buckets=5, 
+                min_window_length=5, 
+                grace_period=10,
+                temp=1, 
+                heads = 10, 
+                dimension = 128):
         super().__init__()
         self.delta = delta
         self.clock = clock
         self.max_buckets = max_buckets
         self.min_window_length = min_window_length
         self.grace_period = grace_period
+        self.temp = temp
+        self.heads = heads
+        self.C = dimension
         self._reset()
 
     def _reset(self):
@@ -78,7 +89,10 @@ class ATWIN(DriftDetector):
             clock=self.clock,
             max_buckets=self.max_buckets,
             min_window_length=self.min_window_length,
-            grace_period=self.grace_period,
+            grace_period=self.grace_period, 
+            temp=self.temp, 
+            heads=self.heads, 
+            dimension=self.C
         )
 
     @property
