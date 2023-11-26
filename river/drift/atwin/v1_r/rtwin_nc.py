@@ -266,13 +266,12 @@ class AdaptiveWindowing:
                     raw_width.append(size)
 
             # Uses the d attention heads, sorting them into in and out contexts.
-            inweights, outweights = self._context(raw_resized)
+            outweights, inweights = self._context(raw_resized)
             #print(raw)
             weighted_values = [outweights[i] * raw[i] for i in range(len(raw))]
             weighted_total = sum(weighted_values)
             weighted_width = [outweights[i] * raw_width[i] for i in range(len(raw))]
             total_weight = sum(weighted_width)
-            
 
             reduce_width = True
             while reduce_width:

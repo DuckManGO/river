@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from river.base import DriftDetector
 
-from .atwin_nc_re import AdaptiveWindowing
+from .v1.atwin_nc_re import AdaptiveWindowing
 
 
 class ATWIN(DriftDetector):

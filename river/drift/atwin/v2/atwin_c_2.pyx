@@ -1,6 +1,10 @@
-from math import fabs, log, sqrt
+# cython: boundscheck=False
+
+from libc.math cimport fabs, log, pow, sqrt
 
 import numpy as np
+
+cimport numpy as np
 
 from collections import deque
 from typing import Deque
@@ -10,26 +14,7 @@ import torch
 import torch.nn as nn
 from torch.nn import functional as F
 
-import matplotlib.pyplot as plt
-from matplotlib import gridspec
-def plot_data(plots=[], lines=None):
-    n = len(plots)
-    fig = plt.figure(figsize=(5,3*n), tight_layout=True)
-    gs = gridspec.GridSpec(n, 1, height_ratios=[3] * n)
-    for i in range(n):
-        ax = plt.subplot(gs[i])
-        ax.grid()
-        for j in range(len(plots[i])):
-            #print(plots[i][j])
-            ax.plot(plots[i][j])
-        if lines is not None:
-            for drift_detected in lines[0]:
-                ax.axvline(drift_detected, color='red')
-            for drift_detected in lines[1]:
-                ax.axvline(drift_detected, color='blue')
-    plt.show()
-
-class AdaptiveWindowing:
+cdef class AdaptiveWindowing:
     """ The helper class for ADWIN
 
     Parameters
@@ -50,6 +35,11 @@ class AdaptiveWindowing:
         arrived (default is 10).
 
     """
+    cdef:
+        dict __dict__
+        double delta, total, variance, total_width, width, temp
+        int n_buckets, grace_period, min_window_length, tick, n_detections,\
+            clock, max_n_buckets, detect, detect_twice, max_buckets, heads, dimension
 
     def __init__(
             self, 
@@ -58,7 +48,7 @@ class AdaptiveWindowing:
             max_buckets=5, 
             min_window_length=5, 
             grace_period=10, 
-            temp=1, 
+            temp=1., 
             heads = 10, 
             dimension = 128
             ):
@@ -128,15 +118,15 @@ class AdaptiveWindowing:
         """
         return self._update(value)
 
-    def _update(self, value):
+    cdef bint _update(self, double value):
         # Increment window with one element
         self._insert_element(value, 0.0)
 
         return self._detect_change()
 
-    def _insert_element(self, value, variance):
-        bucket = self.bucket_deque[0]
-        key = self.key(torch.tensor([[value]], dtype=torch.float64).float())
+    cdef void _insert_element(self, double value, double variance):
+        cdef Bucket bucket = self.bucket_deque[0]
+        cdef Tensor key = self.key(torch.tensor([[value]], dtype=torch.float64).float())
         bucket.insert_data(value, variance, key)
         self.n_buckets += 1
 
@@ -145,7 +135,7 @@ class AdaptiveWindowing:
 
         # Update width, variance and total
         self.width += 1
-        incremental_variance = 0.0
+        cdef double incremental_variance = 0.0
         if self.width > 1.0:
             incremental_variance = (
                     (self.width - 1.0)
@@ -159,21 +149,21 @@ class AdaptiveWindowing:
         self._compress_buckets()
 
     @staticmethod
-    def _calculate_bucket_size(row):
-        return 2**row #pow(2, row)
+    def _calculate_bucket_size(row: int):
+        return pow(2, row)
 
-    def _delete_element(self):
-        bucket = self.bucket_deque[-1]
-        n = self._calculate_bucket_size(len(self.bucket_deque) - 1) # length of bucket
-        u = bucket.get_total_at(0)     # total of bucket
-        mu = u / n                   # mean of bucket
-        v = bucket.get_variance_at(0)  # variance of bucket
+    cdef double _delete_element(self):
+        cdef Bucket bucket = self.bucket_deque[-1]
+        cdef double n = self._calculate_bucket_size(len(self.bucket_deque) - 1) # length of bucket
+        cdef double u = bucket.get_total_at(0)     # total of bucket
+        cdef double mu = u / n                   # mean of bucket
+        cdef double v = bucket.get_variance_at(0)  # variance of bucket
 
         # Update width, total and variance
         self.width -= n
         self.total -= u
         mu_window = self.total / self.width     # mean of the window
-        incremental_variance = (
+        cdef double incremental_variance = (
                 v + n * self.width * (mu - mu_window) * (mu - mu_window)
                 / (n + self.width)
         )
@@ -187,7 +177,13 @@ class AdaptiveWindowing:
 
         return n
 
-    def _compress_buckets(self):
+    cdef void _compress_buckets(self):
+
+        cdef:
+            unsigned int idx, k
+            double n1, n2, mu1, mu2, temp, total12, size
+            Bucket bucket, next_bucket
+            Tensor k12
 
         bucket = self.bucket_deque[0]
         idx = 0
@@ -200,6 +196,7 @@ class AdaptiveWindowing:
                 except IndexError:
                     self.bucket_deque.append(Bucket(max_size=self.max_buckets))
                     next_bucket = self.bucket_deque[-1]
+
                 size = self._calculate_bucket_size(idx) # length of bucket
 
                 n1 = size                               # length of bucket 1
@@ -212,7 +209,6 @@ class AdaptiveWindowing:
                 temp = n1 * n2 * (mu1 - mu2) * (mu1 - mu2) / (n1 + n2)
                 v12 = bucket.get_variance_at(0) + bucket.get_variance_at(1) + temp
                 k12 = self.key(torch.tensor([[total12 / size]], dtype=torch.float64).float())
-                next_bucket.insert_data(total12, v12, k12)
                 self.n_buckets += 1
                 bucket.compress(2)
 
@@ -226,6 +222,8 @@ class AdaptiveWindowing:
             except IndexError:
                 bucket = None
             idx += 1
+
+
 
     def _detect_change(self):
         """Detect concept change.
@@ -258,17 +256,17 @@ class AdaptiveWindowing:
         if (self.tick % self.clock == 0) and (self.width > self.grace_period):
 
             # new inclusion of attention
-            raw = []
-            raw_keys = []
-            raw_width = []
+            raw = [0] * self.width
+            raw_keys = [None] * self.width
+            raw_width = [0] * self.width
+            x = 0
             for i in range(len(self.bucket_deque) - 1, -1 , -1):
                 bucket = self.bucket_deque[i]
-                size = self._calculate_bucket_size(i)
                 for j in range(bucket.current_idx):
-                    raw.append(bucket.get_total_at(j))
-                    raw_keys.append(bucket.get_key_at(j))
-                    #print(bucket.get_key_at(j))
-                    raw_width.append(size)
+                    raw[x] = bucket.get_total_at(j)
+                    raw_keys[x] = bucket.get_total_at(j)
+                    raw_width[x] = bucket.get_key_at(j)
+                    x += 1
 
             # Uses the d attention heads, sorting them into in and out contexts.
             inweights, outweights = self._context(raw_keys)
@@ -369,7 +367,6 @@ class AdaptiveWindowing:
                                 total_weight -= weighted_width.pop(-1)
 
                                 exit_flag = True    # We are done
-                                plot_data([[raw], [inweights], [outweights]])
                                 break
 
         self.total_width += self.width
@@ -378,8 +375,10 @@ class AdaptiveWindowing:
 
         return change_detected
 
-    def _evaluate_cut(self, n0, n1, delta_mean, delta):
-
+    cdef bint _evaluate_cut(self, double n0, double n1,
+                            double delta_mean, double delta):
+        cdef:
+            double delta_prime, m_recip, epsilon
         delta_prime = log(2 * log(self.width) / delta)
         # Use reciprocal of m to avoid extra divisions when calculating epsilon
         m_recip = ((1.0 / (n0 - self.min_window_length + 1))
